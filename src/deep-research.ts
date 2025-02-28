@@ -1,9 +1,9 @@
 import FirecrawlApp, { SearchResponse } from '@mendable/firecrawl-js';
-import { generateObject } from 'ai';
 import { compact } from 'lodash-es';
 import pLimit from 'p-limit';
 import { z } from 'zod';
 
+import { safeGenerateObject } from './ai/generate-helper';
 import { o3MiniModel, trimPrompt } from './ai/providers';
 import { systemPrompt } from './prompt';
 import { OutputManager } from './output-manager';
@@ -53,7 +53,7 @@ async function generateSerpQueries({
   // optional, if provided, the research will continue from the last learning
   learnings?: string[];
 }) {
-  const res = await generateObject({
+  const res = await safeGenerateObject({
     model: o3MiniModel,
     system: systemPrompt(),
     prompt: `Given the following prompt from the user, generate a list of SERP queries to research the topic. Return a maximum of ${numQueries} queries, but feel free to return less if the original prompt is clear. Make sure each query is unique and not similar to each other: <prompt>${query}</prompt>\n\n${
@@ -65,16 +65,7 @@ async function generateSerpQueries({
     }`,
     schema: z.object({
       queries: z
-        .array(
-          z.object({
-            query: z.string().describe('The SERP query'),
-            researchGoal: z
-              .string()
-              .describe(
-                'First talk about the goal of the research that this query is meant to accomplish, then go deeper into how to advance the research once the results are found, mention additional research directions. Be as specific as possible, especially for additional research directions.',
-              ),
-          }),
-        )
+        .array(z.string())
         .describe(`List of SERP queries, max of ${numQueries}`),
     }),
   });
@@ -83,7 +74,13 @@ async function generateSerpQueries({
     res.object.queries,
   );
 
-  return res.object.queries.slice(0, numQueries);
+  // Convert the array of strings to the expected format with query and researchGoal properties
+  const formattedQueries = res.object.queries.map(queryString => ({
+    query: queryString,
+    researchGoal: `Research goal for: ${queryString}. Explore the topic in depth and identify key information.`,
+  }));
+
+  return formattedQueries.slice(0, numQueries);
 }
 
 async function processSerpResult({
@@ -102,7 +99,7 @@ async function processSerpResult({
   );
   log(`Ran ${query}, found ${contents.length} contents`);
 
-  const res = await generateObject({
+  const res = await safeGenerateObject({
     model: o3MiniModel,
     abortSignal: AbortSignal.timeout(60_000),
     system: systemPrompt(),
@@ -144,7 +141,7 @@ export async function writeFinalReport({
     150_000,
   );
 
-  const res = await generateObject({
+  const res = await safeGenerateObject({
     model: o3MiniModel,
     system: systemPrompt(),
     prompt: `Given the following prompt from the user, write a final report on the topic using the learnings from research. Make it as as detailed as possible, aim for 3 or more pages, include ALL the learnings from research:\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>`,

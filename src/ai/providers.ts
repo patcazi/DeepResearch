@@ -13,14 +13,23 @@ const openai = createOpenAI({
   baseURL: process.env.OPENAI_ENDPOINT || 'https://api.openai.com/v1',
 } as CustomOpenAIProviderSettings);
 
-const customModel = process.env.OPENAI_MODEL || 'o3-mini';
+const customModel = process.env.OPENAI_MODEL || 'o1-mini';
 
 // Models
 
-export const o3MiniModel = openai(customModel, {
-  reasoningEffort: customModel.startsWith('o') ? 'medium' : undefined,
-  structuredOutputs: true,
-});
+const modelOptions: any = {};
+
+// Remove structuredOutputs and response_format settings for all models
+if (customModel !== 'o1-mini') {
+  // For models that support it, include reasoningEffort and any structured output settings
+  modelOptions.reasoningEffort = customModel.startsWith('o') ? 'medium' : undefined;
+  // If you need structured outputs for other models, set them here (if applicable)
+} else {
+  // For 'o1-mini', explicitly remove any response_format parameter
+  modelOptions.response_format = undefined;
+}
+
+export const o3MiniModel = openai(customModel, modelOptions);
 
 const MinChunkSize = 140;
 const encoder = getEncoding('o200k_base');
