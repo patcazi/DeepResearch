@@ -4,6 +4,7 @@ import * as readline from 'readline';
 import { deepResearch, writeFinalReport } from './deep-research';
 import { generateFeedback } from './feedback';
 import { OutputManager } from './output-manager';
+import { generateCompanyPrompt } from './ai/companyPromptGenerator';
 
 const output = new OutputManager();
 
@@ -26,10 +27,103 @@ function askQuestion(query: string): Promise<string> {
   });
 }
 
+// Helper function to check if the query is explicitly a company research query
+function isCompanyQuery(query: string): boolean {
+  // Normalize the query
+  const normalizedQuery = query.trim().toLowerCase();
+  
+  // Check if the query explicitly starts with "company:" or "company name:"
+  if (/^company(?:\s*name)?:\s*(.+)/i.test(normalizedQuery)) {
+    console.log(`Detected explicit company query format: "${query}"`);
+    return true;
+  }
+  
+  // List of well-known companies to check against
+  const wellKnownCompanies = [
+    'google', 'apple', 'microsoft', 'amazon', 'facebook', 'meta', 'tesla', 
+    'twitter', 'x', 'ibm', 'intel', 'amd', 'nvidia', 'samsung', 'sony', 
+    'oracle', 'sap', 'salesforce', 'adobe', 'netflix', 'spotify', 'uber', 
+    'lyft', 'airbnb', 'slack', 'zoom', 'tiktok', 'snapchat', 'pinterest',
+    'linkedin', 'openai', 'anthropic', 'xai', 'cohere', 'midjourney'
+  ];
+  
+  // Check if the query is exactly a company name or contains it with minimal other text
+  for (const company of wellKnownCompanies) {
+    // Check for exact match or if the query starts with the company name
+    if (normalizedQuery === company || 
+        normalizedQuery.startsWith(company + ' ') || 
+        normalizedQuery.includes('about ' + company) ||
+        normalizedQuery.includes('research ' + company)) {
+      console.log(`Detected known company name: "${company}" in query: "${query}"`);
+      return true;
+    }
+  }
+  
+  // Check if the query ends with common company identifiers
+  if (/\b(?:inc\.?|corp\.?|corporation|llc|ltd\.?|limited|gmbh|co\.?|company)\b/i.test(normalizedQuery)) {
+    console.log(`Detected company identifier in query: "${query}"`);
+    return true;
+  }
+  
+  // Check if the query is about a company or organization
+  if (/\b(?:company|organization|business|enterprise|firm|corporation)\b/i.test(normalizedQuery)) {
+    console.log(`Detected company-related term in query: "${query}"`);
+    return true;
+  }
+  
+  console.log(`Query not detected as a company query: "${query}"`);
+  return false;
+}
+
+// Extract company name from the query
+function extractCompanyName(query: string): string {
+  // Check for explicit company prefix
+  const companyPrefixMatch = query.match(/^company(?:\s*name)?:\s*(.+)/i);
+  if (companyPrefixMatch && companyPrefixMatch[1]) {
+    return companyPrefixMatch[1].trim();
+  }
+  
+  // Normalize the query
+  const normalizedQuery = query.trim().toLowerCase();
+  
+  // List of well-known companies to check against
+  const wellKnownCompanies = [
+    'google', 'apple', 'microsoft', 'amazon', 'facebook', 'meta', 'tesla', 
+    'twitter', 'x', 'ibm', 'intel', 'amd', 'nvidia', 'samsung', 'sony', 
+    'oracle', 'sap', 'salesforce', 'adobe', 'netflix', 'spotify', 'uber', 
+    'lyft', 'airbnb', 'slack', 'zoom', 'tiktok', 'snapchat', 'pinterest',
+    'linkedin', 'openai', 'anthropic', 'xai', 'cohere', 'midjourney'
+  ];
+  
+  // Check if the query contains a known company name
+  for (const company of wellKnownCompanies) {
+    if (normalizedQuery === company || 
+        normalizedQuery.startsWith(company + ' ') || 
+        normalizedQuery.includes('about ' + company) ||
+        normalizedQuery.includes('research ' + company)) {
+      return company.charAt(0).toUpperCase() + company.slice(1); // Return with first letter capitalized
+    }
+  }
+  
+  // Extract company name from queries with company identifiers
+  const companyWithIdentifierMatch = query.match(/\b([A-Za-z0-9\s]+)\b(?:\s+(?:Inc\.?|Corp\.?|Corporation|LLC|Ltd\.?|Limited|GmbH|Co\.?|Company))/i);
+  if (companyWithIdentifierMatch && companyWithIdentifierMatch[1]) {
+    return companyWithIdentifierMatch[1].trim();
+  }
+  
+  // If no specific format is detected, use the whole query
+  // Remove common prefixes like "about" or "research"
+  return query.replace(/^(?:about|research|company|information about|tell me about)\s+/i, '').trim();
+}
+
 // run the agent
 async function run() {
   // Get initial query
   const initialQuery = await askQuestion('What would you like to research? ');
+
+  // Check if this is a company research query
+  const isCompany = isCompanyQuery(initialQuery);
+  const companyName = isCompany ? extractCompanyName(initialQuery) : '';
 
   // Get breath and depth parameters
   const breadth =
@@ -47,28 +141,37 @@ async function run() {
 
   log(`Creating research plan...`);
 
-  // Generate follow-up questions
-  const followUpQuestions = await generateFeedback({
-    query: initialQuery,
-  });
+  let combinedQuery: string;
 
-  log(
-    '\nTo better understand your research needs, please answer these follow-up questions:',
-  );
+  if (isCompany) {
+    // For company research, use the company-specific prompt generator
+    log(`Detected company research query for: ${companyName}`);
+    combinedQuery = generateCompanyPrompt(companyName);
+  } else {
+    // For generic research, use the existing flow with follow-up questions
+    // Generate follow-up questions
+    const followUpQuestions = await generateFeedback({
+      query: initialQuery,
+    });
 
-  // Collect answers to follow-up questions
-  const answers: string[] = [];
-  for (const question of followUpQuestions) {
-    const answer = await askQuestion(`\n${question}\nYour answer: `);
-    answers.push(answer);
-  }
+    log(
+      '\nTo better understand your research needs, please answer these follow-up questions:',
+    );
 
-  // Combine all information for deep research
-  const combinedQuery = `
+    // Collect answers to follow-up questions
+    const answers: string[] = [];
+    for (const question of followUpQuestions) {
+      const answer = await askQuestion(`\n${question}\nYour answer: `);
+      answers.push(answer);
+    }
+
+    // Combine all information for deep research
+    combinedQuery = `
 Initial Query: ${initialQuery}
 Follow-up Questions and Answers:
 ${followUpQuestions.map((q: string, i: number) => `Q: ${q}\nA: ${answers[i]}`).join('\n')}
 `;
+  }
 
   log('\nResearching your topic...');
 
