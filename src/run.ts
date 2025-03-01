@@ -130,18 +130,21 @@ async function run() {
   console.log("Generated Research Prompt:", researchPrompt);
 
   // Get breath and depth parameters
-  const breadth =
-    parseInt(
-      await askQuestion(
-        'Enter research breadth (recommended 2-10, default 4): ',
-      ),
-      10,
-    ) || 4;
-  const depth =
-    parseInt(
-      await askQuestion('Enter research depth (recommended 1-5, default 2): '),
-      10,
-    ) || 2;
+  // const breadth =
+  //   parseInt(
+  //     await askQuestion(
+  //       'Enter research breadth (recommended 2-10, default 4): ',
+  //     ),
+  //     10,
+  //   ) || 4;
+  // const depth =
+  //   parseInt(
+  //     await askQuestion('Enter research depth (recommended 1-5, default 2): '),
+  //     10,
+  //   ) || 2;
+  
+  const breadth = 4;
+  const depth = 2;
 
   log(`Creating research plan...`);
 
