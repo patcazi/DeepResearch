@@ -89,3 +89,54 @@ export function determineResearchPrompt(details: { companyName?: string; keyTopi
     return "You are a research assistant. Perform a comprehensive analysis on the provided topic.";
   }
 }
+
+/**
+ * Infers a unified research query from a call transcript using an OpenAI model.
+ * @param transcript - The call transcript text.
+ * @returns A promise that resolves to a string containing the unified research query.
+ */
+export async function inferUnifiedResearchQuery(transcript: string): Promise<string> {
+  // Create a prompt for generating a unified research query
+  const prompt = `
+Given the following call transcript, analyze the content and determine the three most important research questions that should be explored further. Then, collapse these questions into one comprehensive research query. Return ONLY a valid JSON object with the following key:
+  - "unifiedQuery": a string containing the comprehensive research query.
+Do not include any extra text, markdown formatting, or commentary.
+
+Transcript:
+"""${transcript}"""
+  `;
+  
+  let result;
+  try {
+    // Call the OpenAI model to generate a response
+    result = await generateText({
+      model: o3MiniModel,
+      prompt,
+      system: "You are an expert research assistant. Always respond with valid JSON only.",
+    });
+    
+    // Clean the output
+    let cleanedText = result.text.trim();
+    
+    // Remove markdown code fences
+    cleanedText = cleanedText.replace(/^```(?:json)?\s*/, '').replace(/```$/, '');
+    
+    // Extract only the JSON part (from first { to last })
+    const firstBrace = cleanedText.indexOf('{');
+    const lastBrace = cleanedText.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleanedText = cleanedText.substring(firstBrace, lastBrace + 1);
+    }
+    
+    // Parse the cleaned text as JSON
+    const extracted = JSON.parse(cleanedText);
+    
+    // Return the unified query
+    return extracted.unifiedQuery || "You are a research assistant. Please perform a comprehensive analysis on the provided transcript.";
+  } catch (error) {
+    console.error("Error inferring unified research query:", error, "Response:", result?.text);
+    // Return fallback query in case of error
+    return "You are a research assistant. Please perform a comprehensive analysis on the provided transcript.";
+  }
+}

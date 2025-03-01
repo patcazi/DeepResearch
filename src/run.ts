@@ -5,7 +5,7 @@ import { deepResearch, writeFinalReport } from './deep-research';
 import { generateFeedback } from './feedback';
 import { OutputManager } from './output-manager';
 import { generateCompanyPrompt } from './ai/companyPromptGenerator';
-import { processTranscript, extractTranscriptDetails, determineResearchPrompt } from './callTranscriptProcessor';
+import { processTranscript, extractTranscriptDetails, determineResearchPrompt, inferUnifiedResearchQuery } from './callTranscriptProcessor';
 
 const output = new OutputManager();
 
@@ -122,27 +122,11 @@ async function run() {
   // Get call transcript
   const transcript = await askQuestion('Please paste the call transcript: ');
   const processedTranscript = processTranscript(transcript);
-  const details = await extractTranscriptDetails(processedTranscript);
-  console.log("Extracted Details:", details);
   
-  // Generate research prompt based on extracted details
-  const researchPrompt = determineResearchPrompt(details);
-  console.log("Generated Research Prompt:", researchPrompt);
+  // Use the new unified research query approach
+  const researchPrompt = await inferUnifiedResearchQuery(processedTranscript);
+  console.log("Generated Unified Research Query:", researchPrompt);
 
-  // Get breath and depth parameters
-  // const breadth =
-  //   parseInt(
-  //     await askQuestion(
-  //       'Enter research breadth (recommended 2-10, default 4): ',
-  //     ),
-  //     10,
-  //   ) || 4;
-  // const depth =
-  //   parseInt(
-  //     await askQuestion('Enter research depth (recommended 1-5, default 2): '),
-  //     10,
-  //   ) || 2;
-  
   const breadth = 4;
   const depth = 2;
 
