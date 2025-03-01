@@ -5,6 +5,7 @@ import { deepResearch, writeFinalReport } from './deep-research';
 import { generateFeedback } from './feedback';
 import { OutputManager } from './output-manager';
 import { generateCompanyPrompt } from './ai/companyPromptGenerator';
+import { processTranscript, extractTranscriptDetails, determineResearchPrompt } from './callTranscriptProcessor';
 
 const output = new OutputManager();
 
@@ -118,12 +119,15 @@ function extractCompanyName(query: string): string {
 
 // run the agent
 async function run() {
-  // Get initial query
-  const initialQuery = await askQuestion('What would you like to research? ');
-
-  // Check if this is a company research query
-  const isCompany = isCompanyQuery(initialQuery);
-  const companyName = isCompany ? extractCompanyName(initialQuery) : '';
+  // Get call transcript
+  const transcript = await askQuestion('Please paste the call transcript: ');
+  const processedTranscript = processTranscript(transcript);
+  const details = await extractTranscriptDetails(processedTranscript);
+  console.log("Extracted Details:", details);
+  
+  // Generate research prompt based on extracted details
+  const researchPrompt = determineResearchPrompt(details);
+  console.log("Generated Research Prompt:", researchPrompt);
 
   // Get breath and depth parameters
   const breadth =
@@ -141,44 +145,12 @@ async function run() {
 
   log(`Creating research plan...`);
 
-  let combinedQuery: string;
-
-  if (isCompany) {
-    // For company research, use the company-specific prompt generator
-    log(`Detected company research query for: ${companyName}`);
-    combinedQuery = generateCompanyPrompt(companyName);
-  } else {
-    // For generic research, use the existing flow with follow-up questions
-    // Generate follow-up questions
-    const followUpQuestions = await generateFeedback({
-      query: initialQuery,
-    });
-
-    log(
-      '\nTo better understand your research needs, please answer these follow-up questions:',
-    );
-
-    // Collect answers to follow-up questions
-    const answers: string[] = [];
-    for (const question of followUpQuestions) {
-      const answer = await askQuestion(`\n${question}\nYour answer: `);
-      answers.push(answer);
-    }
-
-    // Combine all information for deep research
-    combinedQuery = `
-Initial Query: ${initialQuery}
-Follow-up Questions and Answers:
-${followUpQuestions.map((q: string, i: number) => `Q: ${q}\nA: ${answers[i]}`).join('\n')}
-`;
-  }
-
   log('\nResearching your topic...');
 
   log('\nStarting research with progress tracking...\n');
   
   const { learnings, visitedUrls } = await deepResearch({
-    query: combinedQuery,
+    query: researchPrompt,
     breadth,
     depth,
     onProgress: (progress) => {
@@ -193,7 +165,7 @@ ${followUpQuestions.map((q: string, i: number) => `Q: ${q}\nA: ${answers[i]}`).j
   log('Writing final report...');
 
   const report = await writeFinalReport({
-    prompt: combinedQuery,
+    prompt: researchPrompt,
     learnings,
     visitedUrls,
   });
